@@ -351,7 +351,8 @@ async def get_istqb_questions(module: str = None):
             "question": clean_q,
             "options": options,
             "correct_answer": content.get('correct_answer'),
-            "discussions": content.get('discussions', [])
+            "discussions": content.get('discussions', []),
+            "link": q.get('link')
         })
     return {"total": len(result), "questions": result}
 

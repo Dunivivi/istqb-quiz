@@ -320,6 +320,7 @@ function renderQuestion() {
             <div class="question-meta">
                 <span class="badge">${q.module}</span>
                 <span class="badge">Topic ${q.topic} · Q${q.number}</span>
+                ${q.link ? `<a href="${q.link}" target="_blank" class="badge" style="margin-left:auto;text-decoration:none;color:#3b82f6;border:1px solid #3b82f6;background:transparent">View on ExamTopics ↗</a>` : ''}
             </div>
             <p class="question-text">${q.question}</p>
             ${resultHtml}
