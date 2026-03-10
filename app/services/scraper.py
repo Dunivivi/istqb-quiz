@@ -129,6 +129,9 @@ class ExamScraper:
                 if response.status_code == 200:
                     from bs4 import BeautifulSoup
                     soup = BeautifulSoup(response.text, 'html.parser')
+                    # Preserve <br> tags as newlines before stripping HTML
+                    for br in soup.find_all('br'):
+                        br.replace_with('\n')
                     return soup.get_text(separator='\n')
                 elif response.status_code == 429:
                     logger.warning(f"Rate limited on {url}, waiting 30s")

@@ -229,16 +229,21 @@ function renderModules() {
     });
 }
 
-function selectModule(module, btnEl) {
+function selectModule(module, btnEl, index = 0) {
     document.querySelectorAll('.module-btn').forEach(b => b.classList.remove('active'));
     if (btnEl) btnEl.classList.add('active');
+    else {
+        document.querySelectorAll('.module-btn').forEach(b => {
+            if (b.dataset.module === module) b.classList.add('active');
+        });
+    }
 
     currentQuestions = module === '__ALL__'
         ? [...allQuestions]
         : allQuestions.filter(q => q.module === module);
 
     if (shuffled) shuffle(currentQuestions);
-    currentIndex = 0;
+    currentIndex = Math.min(index, currentQuestions.length - 1);
     answered = {};
     updateScore();
 
@@ -302,6 +307,7 @@ function renderQuestion() {
                 <span class="badge">Topic ${q.topic} · Q${q.number}</span>
                 ${q.link ? `<a href="${q.link}" target="_blank" class="badge" style="margin-left:auto;text-decoration:none;color:#3b82f6;border:1px solid #3b82f6;background:transparent">View on ExamTopics ↗</a>` : ''}
             </div>
+            ${q.missing_visual ? `<div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#854d0e">⚠️ This question references a <strong>table or diagram</strong> that requires JavaScript to display. <a href="${q.link}" target="_blank" style="color:#92400e;font-weight:600">View full question on ExamTopics ↗</a></div>` : ''}
             <p class="question-text">${q.question}</p>
             ${resultHtml}
             <div class="options">${optionsHtml}</div>
@@ -315,6 +321,7 @@ function renderQuestion() {
     }
 
     updateProgress();
+    updateURL();
     document.getElementById('quiz-area').scrollTop = 0;
 }
 
@@ -327,7 +334,21 @@ function submitAnswer(q, selected) {
 function goTo(index) {
     if (index < 0 || index >= currentQuestions.length) return;
     currentIndex = index;
+    updateURL();
     renderQuestion();
+}
+
+function updateURL() {
+    const module = document.getElementById('current-module').textContent;
+    const params = new URLSearchParams({ module, q: currentIndex + 1 });
+    history.replaceState(null, '', '?' + params.toString());
+}
+
+function restoreFromURL() {
+    const params = new URLSearchParams(location.search);
+    const module = params.get('module');
+    const q = parseInt(params.get('q') || '1') - 1;
+    if (module) selectModule(module === 'All Modules' ? '__ALL__' : module, null, q);
 }
 
 document.getElementById('prev-btn').addEventListener('click', () => goTo(currentIndex - 1));
@@ -466,7 +487,7 @@ const savedTheme = localStorage.getItem('istqb-theme') || 'light';
 document.body.setAttribute('data-theme', savedTheme);
 document.getElementById('theme-btn').textContent = savedTheme === 'dark' ? '☀️' : '🌙';
 
-init();
+init().then(restoreFromURL);
 </script>
 </body>
 </html>

@@ -334,10 +334,11 @@ async def get_istqb_questions(module: str = None):
         q_module = match.group(1) if match else 'Other'
         if module and q_module != module:
             continue
-        # Clean question text
+        # Clean question text - preserve newlines, only collapse spaces/tabs
         clean_q = re.sub(r'^\[All [^\]]+Questions\]\s*', '', text.strip())
-        clean_q = re.sub(r'^[\s\t]+', '', clean_q)
-        clean_q = re.sub(r'\s+', ' ', clean_q).strip()
+        clean_q = re.sub(r'^[ \t]+', '', clean_q, flags=re.MULTILINE)
+        clean_q = re.sub(r'[ \t]+', ' ', clean_q)
+        clean_q = re.sub(r'\n{3,}', '\n\n', clean_q).strip()
         # Clean options (remove "Most Voted" suffix)
         options = []
         for opt in content.get('options', []):
