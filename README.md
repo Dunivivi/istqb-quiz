@@ -1,75 +1,82 @@
-# ExamTopics Web Scraper
+# ExamTopics Viewer + ISTQB Quiz
 
-FastAPI backend for scraping ExamTopics.com and displaying MCQ questions with discussions.
+FastAPI backend for scraping ExamTopics.com and displaying MCQ questions with discussions. Includes a dedicated offline ISTQB quiz page.
 
 ## Quick Start with Docker
 
 ```bash
-# Clone and navigate to the project
-cd examtopics
-
-# Start the application with Docker Compose
 docker-compose up -d
 ```
 
-The app will be available at **http://localhost:8000**
+- App: **http://localhost:8001**
+- ISTQB Quiz: **http://localhost:8001/istqb**
 
 This starts both:
-- **FastAPI app** on port 8000
-- **Pinchtab browser** on port 9867
+- **FastAPI app** on port 8001
+- **Pinchtab browser** on port 9867 (used for fetching question content)
 
-## Manual Setup
+## ISTQB Quiz (Static / Netlify)
 
-1. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+A fully static version of the quiz is available in the `netlify/` folder — no server needed.
 
-2. Start Pinchtab Docker container on port 9867
+Deploy by dragging the `netlify/` folder to [Netlify Drop](https://app.netlify.com/drop). Contains:
+- `index.html` — standalone quiz page
+- `questions.json` — all 330 ISTQB questions pre-exported
 
-3. Run the server:
-```bash
-cd app
-python main.py
-```
+### Quiz Features
+- Module selector (CTFL v4.0, CTAL-TA, CT-TAE, CTFL-2018, and more)
+- Answer reveal only after submitting your answer
+- Score tracker (correct / wrong / remaining)
+- Shuffle mode, jump to question #, search
+- Community discussions shown after answering
+- Keyboard shortcuts: `←` `→` to navigate, `1`–`4` to answer
+- Dark mode
 
-Or with uvicorn:
-```bash
-cd app
-uvicorn main:app --reload
-```
+## Workflow: Scrape a new exam
 
-The app will be available at http://localhost:8000
+1. Select an exam from the sidebar (or add a custom one)
+2. Click **Scrape Exam** — fetches all question links
+3. Click **Download Content** — pre-fetches all question content via Pinchtab and stores locally in SQLite
+4. All questions now load offline from cache
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/exams` | List available exams |
+| POST | `/api/exams/add` | Add a custom exam |
+| GET | `/api/exams/{exam}/questions` | Get question links |
+| POST | `/api/exams/{exam}/scrape` | Scrape question links |
+| POST | `/api/exams/{exam}/prefetch` | Pre-fetch all question content |
+| GET | `/api/questions/{id}` | Get question detail |
+| GET | `/api/jobs/{job_id}` | Check job status |
+| GET | `/api/jobs/{job_id}/stream` | Stream job progress (SSE) |
+| GET | `/api/istqb/modules` | List ISTQB modules with counts |
+| GET | `/api/istqb/questions` | Get all ISTQB questions (cleaned) |
 
 ## Docker Commands
 
 ```bash
-# Start services
+# Start
 docker-compose up -d
 
-# View logs
-docker-compose logs -f
+# Rebuild after code changes
+docker-compose up -d --build app
 
-# Stop services
+# Restart Pinchtab (if browser crashes)
+docker-compose restart pinchtab
+
+# Logs
+docker-compose logs -f app
+
+# Stop
 docker-compose down
-
-# Rebuild containers
-docker-compose build --no-cache
 ```
 
-## API Endpoints
+## Manual Setup
 
-- `GET /api/exams` - List available exams
-- `GET /api/exams/{exam}/questions` - Get question links for an exam
-- `GET /api/questions/{id}` - Get question detail (fetches from Pinchtab)
-- `POST /api/exams/{exam}/scrape` - Start scraping an exam
-- `GET /api/jobs/{job_id}` - Check scraping job status
-
-## Features
-
-- Scrape exam question links from ExamTopics
-- Use Pinchtab browser automation to get page content
-- Parse MCQ with options, answers, explanations
-- Interactive frontend with dark mode
-- SQLite caching to avoid re-scraping
-- Previous/Next navigation between questions
+```bash
+pip install -r requirements.txt
+# Start Pinchtab on port 9867
+uvicorn app.main:app --reload --port 8001
+```
