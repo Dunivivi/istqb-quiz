@@ -35,6 +35,13 @@ async def root():
         return f.read()
 
 
+@app.get("/istqb", response_class=HTMLResponse)
+async def istqb():
+    path = Path(__file__).parent.parent / "static" / "istqb.html"
+    with open(path, "r") as f:
+        return f.read()
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)

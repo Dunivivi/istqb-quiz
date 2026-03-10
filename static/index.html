@@ -41,6 +41,7 @@
             </div>
             
             <button id="scrape-btn" class="scrape-btn" disabled>Scrape Exam</button>
+            <button id="prefetch-btn" class="scrape-btn" disabled style="margin-top:8px;background:#2563eb;">Download Content</button>
         </aside>
         
         <main class="main-content">
@@ -151,6 +152,7 @@ function initTheme() {
 function setupEventListeners() {
     document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
     document.getElementById('scrape-btn').addEventListener('click', handleScrape);
+    document.getElementById('prefetch-btn').addEventListener('click', handlePrefetch);
     document.getElementById('back-btn').addEventListener('click', showQuestionsList);
     document.getElementById('prev-btn').addEventListener('click', prevQuestion);
     document.getElementById('next-btn').addEventListener('click', nextQuestion);
@@ -231,6 +233,7 @@ async function selectExam(exam) {
     
     document.getElementById('current-exam').textContent = exam.toUpperCase();
     document.getElementById('scrape-btn').disabled = false;
+    document.getElementById('prefetch-btn').disabled = false;
     
     try {
         const data = await getExamQuestions(exam);
@@ -292,35 +295,38 @@ async function loadQuestionDetail(questionId) {
 function renderQuestionContent(data) {
     document.getElementById('question-title').textContent = data.content.question.substring(0, 100) + '...';
     document.getElementById('question-text').textContent = data.content.question;
-    
+
+    // Reset state
+    document.getElementById('answer-reveal').classList.add('hidden');
+    document.getElementById('explanation').classList.add('hidden');
+    document.getElementById('discussions').classList.add('hidden');
+
     const optionsContainer = document.getElementById('options-container');
     optionsContainer.innerHTML = data.content.options.map(function(opt) {
         return '<div class="option" data-letter="' + opt.letter + '"><span class="letter">' + opt.letter + '</span><span class="text">' + opt.text + '</span></div>';
     }).join('');
-    
+
+    var submitted = false;
     optionsContainer.querySelectorAll('.option').forEach(function(opt) {
         opt.addEventListener('click', function() {
+            if (submitted) return;
+            submitted = true;
             selectOption(opt, data.content.correct_answer);
+
+            if (data.content.explanation) {
+                document.getElementById('explanation').classList.remove('hidden');
+                document.getElementById('explanation-text').textContent = data.content.explanation;
+            }
+
+            if (data.content.discussions && data.content.discussions.length > 0) {
+                document.getElementById('discussions').classList.remove('hidden');
+                const discussionsList = document.getElementById('discussions-list');
+                discussionsList.innerHTML = data.content.discussions.map(function(d) {
+                    return '<div class="discussion-item"><p class="user">' + d.user + '</p><p class="comment">' + d.comment + '</p><p class="votes">+' + d.votes + '</p></div>';
+                }).join('');
+            }
         });
     });
-    
-    if (data.content.correct_answer) {
-        document.getElementById('answer-reveal').classList.remove('hidden');
-        document.getElementById('correct-answer').textContent = data.content.correct_answer;
-    }
-    
-    if (data.content.explanation) {
-        document.getElementById('explanation').classList.remove('hidden');
-        document.getElementById('explanation-text').textContent = data.content.explanation;
-    }
-    
-    if (data.content.discussions && data.content.discussions.length > 0) {
-        document.getElementById('discussions').classList.remove('hidden');
-        const discussionsList = document.getElementById('discussions-list');
-        discussionsList.innerHTML = data.content.discussions.map(function(d) {
-            return '<div class="discussion-item"><p class="user">' + d.user + '</p><p class="comment">' + d.comment + '</p><p class="votes">+' + d.votes + '</p></div>';
-        }).join('');
-    }
 }
 
 function selectOption(optionEl, correctAnswer) {
@@ -404,6 +410,70 @@ async function handleScrape() {
         console.error('Failed to start scraping:', error);
         btn.disabled = false;
         btn.textContent = 'Scrape Exam';
+        scrapeProgress.classList.add('hidden');
+    }
+}
+
+async function handlePrefetch() {
+    if (!currentExam) return;
+
+    const btn = document.getElementById('prefetch-btn');
+    const scrapeProgress = document.getElementById('scrape-progress');
+    const scrapeProgressFill = document.getElementById('scrape-progress-fill');
+    const scrapeProgressText = document.getElementById('scrape-progress-text');
+
+    btn.disabled = true;
+    btn.textContent = 'Downloading...';
+    scrapeProgress.classList.remove('hidden');
+    scrapeProgressFill.style.width = '0%';
+    scrapeProgressText.textContent = 'Starting download...';
+
+    try {
+        const response = await fetch(API_BASE + '/exams/' + currentExam + '/prefetch', { method: 'POST' });
+        if (!response.ok) {
+            const err = await response.json();
+            alert('Error: ' + (err.detail || 'Failed to start prefetch'));
+            btn.disabled = false;
+            btn.textContent = 'Download Content';
+            scrapeProgress.classList.add('hidden');
+            return;
+        }
+        const result = await response.json();
+
+        const eventSource = new EventSource(API_BASE + '/jobs/' + result.job_id + '/stream');
+        eventSource.onmessage = function(e) {
+            const status = JSON.parse(e.data);
+            const pct = Math.round(status.progress * 100);
+            scrapeProgressFill.style.width = pct + '%';
+            scrapeProgressText.textContent = status.completed_questions + ' / ' + status.total_questions + ' questions (' + pct + '%)';
+
+            if (status.status === 'completed') {
+                eventSource.close();
+                scrapeProgressText.textContent = 'Done! All content saved offline.';
+                setTimeout(function() {
+                    btn.disabled = false;
+                    btn.textContent = 'Download Content';
+                    scrapeProgress.classList.add('hidden');
+                    scrapeProgressFill.style.width = '0%';
+                }, 2000);
+            } else if (status.status === 'failed') {
+                eventSource.close();
+                btn.disabled = false;
+                btn.textContent = 'Download Content';
+                scrapeProgress.classList.add('hidden');
+                alert('Prefetch failed: ' + status.error);
+            }
+        };
+        eventSource.onerror = function() {
+            eventSource.close();
+            btn.disabled = false;
+            btn.textContent = 'Download Content';
+            scrapeProgress.classList.add('hidden');
+        };
+    } catch (error) {
+        console.error('Prefetch error:', error);
+        btn.disabled = false;
+        btn.textContent = 'Download Content';
         scrapeProgress.classList.add('hidden');
     }
 }

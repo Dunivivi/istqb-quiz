@@ -252,6 +252,110 @@ async def stream_job_status(job_id: str):
     )
 
 
+@router.post("/exams/{exam}/prefetch")
+async def prefetch_exam_content(exam: str, background_tasks: BackgroundTasks):
+    """Pre-fetch all question content for offline use."""
+    questions = await cache.get_questions_by_exam(exam)
+    pending = [q for q in questions if not q.get('content') or q['content'] in (None, 'null', '{}')]
+
+    if not questions:
+        raise HTTPException(status_code=400, detail="No questions found. Scrape the exam first.")
+
+    job_id = await cache.create_job(exam)
+
+    async def run_prefetch():
+        total = len(pending)
+        await cache.update_job(job_id, status='running', total_questions=total, completed_questions=0)
+        completed = 0
+
+        for q in pending:
+            try:
+                text = await asyncio.to_thread(scraper.fetch_question_content_text, q['link'])
+                if text:
+                    content_data = parser.parse_question_page(text)
+                    await cache.update_question_content(q['link'], content_data)
+                    completed += 1
+                    await cache.update_job(
+                        job_id,
+                        completed_questions=completed,
+                        progress=completed / total if total > 0 else 1.0
+                    )
+                    logger.info(f"Prefetched {completed}/{total}: {q['link']}")
+                else:
+                    logger.warning(f"No content returned for {q['link']}")
+            except Exception as e:
+                logger.error(f"Failed to prefetch {q['link']}: {e}")
+
+            await asyncio.sleep(1)
+
+        await cache.update_job(job_id, status='completed', progress=1.0, completed_questions=completed)
+
+    background_tasks.add_task(run_prefetch)
+    already_cached = len(questions) - len(pending)
+    return {"job_id": job_id, "message": f"Pre-fetching {len(pending)} questions ({already_cached} already cached)"}
+
+
+@router.get("/istqb/modules")
+async def get_istqb_modules():
+    """Return ISTQB modules with question counts."""
+    import re
+    questions = await cache.get_questions_by_exam("istqb")
+    modules: dict = {}
+    for q in questions:
+        if not q.get('content'):
+            continue
+        try:
+            content = json.loads(q['content'])
+            text = content.get('question', '')
+            match = re.match(r'^\[All ([^\]]+) Questions\]', text.strip())
+            module = match.group(1) if match else 'Other'
+        except Exception:
+            module = 'Other'
+        modules[module] = modules.get(module, 0) + 1
+    result = [{"module": k, "count": v} for k, v in sorted(modules.items(), key=lambda x: -x[1])]
+    return {"modules": result}
+
+
+@router.get("/istqb/questions")
+async def get_istqb_questions(module: str = None):
+    """Return all ISTQB questions, cleaned, optionally filtered by module."""
+    import re
+    questions = await cache.get_questions_by_exam("istqb")
+    result = []
+    for q in questions:
+        if not q.get('content'):
+            continue
+        try:
+            content = json.loads(q['content'])
+        except Exception:
+            continue
+        text = content.get('question', '')
+        match = re.match(r'^\[All ([^\]]+) Questions\]', text.strip())
+        q_module = match.group(1) if match else 'Other'
+        if module and q_module != module:
+            continue
+        # Clean question text
+        clean_q = re.sub(r'^\[All [^\]]+Questions\]\s*', '', text.strip())
+        clean_q = re.sub(r'^[\s\t]+', '', clean_q)
+        clean_q = re.sub(r'\s+', ' ', clean_q).strip()
+        # Clean options (remove "Most Voted" suffix)
+        options = []
+        for opt in content.get('options', []):
+            opt_text = re.sub(r'\s*Most Voted\s*$', '', opt['text']).strip()
+            options.append({"letter": opt['letter'], "text": opt_text})
+        result.append({
+            "id": q['id'],
+            "module": q_module,
+            "topic": q['topic'],
+            "number": q['number'],
+            "question": clean_q,
+            "options": options,
+            "correct_answer": content.get('correct_answer'),
+            "discussions": content.get('discussions', [])
+        })
+    return {"total": len(result), "questions": result}
+
+
 @router.on_event("startup")
 async def startup():
     await cache.init_db()

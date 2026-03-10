@@ -120,6 +120,25 @@ class ExamScraper:
         logger.info(f"Found {len(sorted_rows)} questions for {exam.upper()}")
         return sorted_rows
     
+    def fetch_question_content_text(self, url: str) -> Optional[str]:
+        """Fetch a question detail page and return its text content."""
+        attempts = 0
+        while attempts < settings.retry_attempts:
+            try:
+                response = self.session.get(url, timeout=settings.request_timeout)
+                if response.status_code == 200:
+                    from bs4 import BeautifulSoup
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    return soup.get_text(separator='\n')
+                elif response.status_code == 429:
+                    logger.warning(f"Rate limited on {url}, waiting 30s")
+                    sleep(30)
+            except requests.RequestException as e:
+                logger.error(f"Request error for {url}: {e}")
+            attempts += 1
+            sleep(5)
+        return None
+
     def get_exam_list(self) -> List[str]:
         """Return a list of common exam providers."""
         return [
@@ -130,4 +149,5 @@ class ExamScraper:
             "hashicorp",
             "cisco",
             "compTIA",
+            "istqb",
         ]
