@@ -146,18 +146,138 @@
         .modules-panel { display: flex; flex-direction: column; overflow: hidden; flex: 1; }
         .modules-panel.hidden { display: none; }
 
-        @media (max-width: 600px) {
-            .sidebar { width: 220px; min-width: 220px; }
-            .quiz-area { padding: 20px 14px; }
+        /* ── Mobile overlay ── */
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 49;
+        }
+        body.sidebar-open .sidebar-overlay { display: block; }
+
+        /* ── Hamburger button (hidden on desktop) ── */
+        #menu-btn { display: none; }
+
+        /* ── Mobile score strip (hidden on desktop) ── */
+        .mobile-score {
+            display: none;
+        }
+
+        /* ── Sidebar theme btn (hidden on desktop) ── */
+        #sidebar-theme-btn { display: none; }
+
+        @media (max-width: 768px) {
+            body { overflow: hidden; }
+
+            /* Sidebar becomes a fixed drawer */
+            .sidebar {
+                position: fixed;
+                top: 0;
+                left: 0;
+                height: 100%;
+                z-index: 50;
+                width: 85vw;
+                max-width: 320px;
+                min-width: unset;
+                transform: translateX(-100%);
+                transition: transform 0.25s ease;
+            }
+            body.sidebar-open .sidebar {
+                transform: translateX(0);
+            }
+
+            /* Sidebar header gets theme button */
+            .sidebar-header {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+            .sidebar-header-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+            }
+            #sidebar-theme-btn {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 32px;
+                height: 32px;
+                border-radius: 8px;
+                border: 1px solid #334155;
+                background: #0f172a;
+                color: #f1f5f9;
+                font-size: 16px;
+                cursor: pointer;
+            }
+
+            /* Hamburger button */
+            #menu-btn {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 36px;
+                height: 36px;
+                min-width: 36px;
+                border-radius: 8px;
+                background: var(--bg);
+                border: 1px solid var(--border);
+                cursor: pointer;
+                font-size: 18px;
+                color: var(--text);
+            }
+
+            /* Topbar: hide jump input and desktop theme btn */
+            #jump-input { display: none; }
+            #theme-btn { display: none; }
+
+            /* Shuffle/reset: icon only */
+            #shuffle-btn, #reset-btn {
+                padding: 7px 10px;
+            }
+
+            /* Quiz area */
+            .quiz-area { padding: 16px 14px; }
+            .question-text { font-size: 15px; }
+            .option { padding: 12px 14px; }
+            .option-text { font-size: 14px; }
+
+            /* Nav bar */
+            .nav-bar { padding: 10px 12px; }
+            .progress-bar { display: none; }
+            #prev-btn, #next-btn, #skip-btn { flex: 1; }
+            .nav-bar-left { flex: 2; }
+
+            /* Mobile score strip */
+            .mobile-score {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                padding: 6px 16px;
+                background: var(--surface);
+                border-bottom: 1px solid var(--border);
+                font-size: 12px;
+                color: var(--text-muted);
+            }
+            .mobile-score .ms-correct { color: var(--correct); font-weight: 600; }
+            .mobile-score .ms-incorrect { color: var(--incorrect); font-weight: 600; }
         }
     </style>
 </head>
 <body data-theme="light">
 
+<div class="sidebar-overlay" id="sidebar-overlay"></div>
+
 <aside class="sidebar">
     <div class="sidebar-header">
-        <h1>ISTQB Quiz</h1>
-        <p>Exam preparation</p>
+        <div class="sidebar-header-row">
+            <div>
+                <h1>ISTQB Quiz</h1>
+                <p>Exam preparation</p>
+            </div>
+            <button id="sidebar-theme-btn">🌙</button>
+        </div>
     </div>
 
     <div class="search-box">
@@ -184,6 +304,7 @@
 <div class="main">
     <div class="topbar">
         <div class="topbar-left">
+            <button id="menu-btn">☰</button>
             <span class="current-module" id="current-module">Select a module</span>
             <span class="question-counter" id="question-counter"></span>
         </div>
@@ -195,6 +316,11 @@
         </div>
     </div>
 
+    <div class="mobile-score" id="mobile-score">
+        <span class="ms-correct">✓ 0</span>
+        <span class="ms-incorrect">✗ 0</span>
+    </div>
+
     <div class="quiz-area" id="quiz-area">
         <div class="empty-state">
             <h2>Select a module to start</h2>
@@ -204,11 +330,11 @@
 
     <div class="nav-bar">
         <div class="nav-bar-left">
-            <button class="btn btn-ghost" id="prev-btn" disabled>← Prev</button>
-            <button class="btn btn-ghost" id="next-btn" disabled>Next →</button>
+            <button class="btn btn-ghost" id="prev-btn" disabled style="flex:1">← Prev</button>
+            <button class="btn btn-ghost" id="next-btn" disabled style="flex:1">Next →</button>
         </div>
         <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
-        <button class="btn btn-ghost" id="skip-btn" disabled>Skip →</button>
+        <button class="btn btn-ghost" id="skip-btn" disabled style="flex:1">Skip →</button>
     </div>
 </div>
 
@@ -243,6 +369,7 @@ async function loadModules() {
 
 // ── Select module ─────────────────────────────────────────────────────────────
 async function selectModule(module, btnEl, index = 0) {
+    document.body.classList.remove('sidebar-open');
     document.querySelectorAll('.module-btn').forEach(b => b.classList.remove('active'));
     if (btnEl) btnEl.classList.add('active');
 
@@ -433,6 +560,12 @@ function updateScore() {
     document.getElementById('score-correct').textContent = correct;
     document.getElementById('score-incorrect').textContent = incorrect;
     document.getElementById('score-remaining').textContent = remaining;
+    // Update mobile score strip
+    const ms = document.getElementById('mobile-score');
+    if (ms) {
+        ms.querySelector('.ms-correct').textContent = '✓ ' + correct;
+        ms.querySelector('.ms-incorrect').textContent = '✗ ' + incorrect;
+    }
 }
 
 function updateCounter() {
@@ -520,18 +653,29 @@ async function doSearch(query) {
     });
 }
 
+// ── Mobile menu ───────────────────────────────────────────────────────────────
+document.getElementById('menu-btn').addEventListener('click', () => document.body.classList.toggle('sidebar-open'));
+document.getElementById('sidebar-overlay').addEventListener('click', () => document.body.classList.remove('sidebar-open'));
+
 // ── Theme ─────────────────────────────────────────────────────────────────────
-document.getElementById('theme-btn').addEventListener('click', () => {
+function toggleTheme() {
     const current = document.body.getAttribute('data-theme');
     const next = current === 'dark' ? 'light' : 'dark';
     document.body.setAttribute('data-theme', next);
-    document.getElementById('theme-btn').textContent = next === 'dark' ? '☀️' : '🌙';
+    const icon = next === 'dark' ? '☀️' : '🌙';
+    document.getElementById('theme-btn').textContent = icon;
+    document.getElementById('sidebar-theme-btn').textContent = icon;
     localStorage.setItem('istqb-theme', next);
-});
+}
+
+document.getElementById('theme-btn').addEventListener('click', toggleTheme);
+document.getElementById('sidebar-theme-btn').addEventListener('click', toggleTheme);
 
 const savedTheme = localStorage.getItem('istqb-theme') || 'light';
 document.body.setAttribute('data-theme', savedTheme);
-document.getElementById('theme-btn').textContent = savedTheme === 'dark' ? '☀️' : '🌙';
+const savedThemeIcon = savedTheme === 'dark' ? '☀️' : '🌙';
+document.getElementById('theme-btn').textContent = savedThemeIcon;
+document.getElementById('sidebar-theme-btn').textContent = savedThemeIcon;
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 (async () => {
